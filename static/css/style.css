@@ -1,0 +1,27 @@
+.links line {
+  stroke: #999;
+  stroke-opacity: 0.6;
+  marker-end: url(#triangle);
+}
+
+.nodes circle {
+  stroke: #000;
+  stroke-width: 1.5px;
+  fill-opacity: .1;
+  fill: green;
+}
+
+.nodes text {
+	font-family: "Verdana";
+	stroke: none; 
+	
+
+    
+}
+
+.topics rect {
+  stroke: #000;
+  stroke-width: 1.5px;
+  fill: red;
+  fill-opacity: .1;
+}
