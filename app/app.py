@@ -77,6 +77,21 @@ def getntEdges():
 	
 	return json.dumps(edges)
 
+@app.route('/api/getgraph')
+def getGraph():
+	for i in g.nt_edges:
+		print i
+	edges = map(edgeToDict, g.nt_all_edges)
+	nodes = map(lambda node : {"label":node.strip()}, g.nn_nodes)
+	topics = map(lambda node : {"label":node.strip()}, g.nt_nodes)
+	out = {
+		"edges": edges,
+		"nodes": nodes,
+		"topics": topics
+	}
+
+	return json.dumps(out)
+
 
 #socketio = SocketIO(app)
 

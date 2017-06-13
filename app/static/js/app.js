@@ -3,7 +3,7 @@ var Graph = function(svg, nodes, edges, topics) {
 	self.nodes = nodes || [];
 	self.topics = topics || [];
 	self.edges = edges || [];
-	self.svg = svg;
+	self.svg = svg.append("g");
 
 	self.boxes = [];
 	self.fedges = [];
@@ -17,8 +17,8 @@ var Graph = function(svg, nodes, edges, topics) {
 	self.simulation = d3.forceSimulation()
     .force("link", d3.forceLink().id(function(d) { return d.label; }))
     .force("charge", d3.forceManyBody().strength(-
-    	1000).distanceMax(50000).distanceMin(0))
-    .force("center", d3.forceCenter(width / 2, height / 2));
+    	1000).distanceMax(5000).distanceMin(0))
+    //.force("center", d3.forceCenter(width / 2, height / 2));
 
 	self.svgnodes = self.svg.append("g")
 		.attr("class", "nodes")
@@ -29,15 +29,24 @@ var Graph = function(svg, nodes, edges, topics) {
 	self.svglink = self.svg.append("g")
     	.attr("class", "links")	
 
+    self.nodeFilter = ["/rosout"];
+    self.topicFilter = ["/rosout", "/clock"];
+
+    self.topicNotConnected = true;
+
     self.setNodes([]);
     self.setTopics([]);
 	self.setEdges([]);
 	
 	self.svg
 		.attr("x", 0)
-		.attr("y", 0)
-		.attr("fx", 0)
-		.attr("fy", 0);		
+		.attr("y", 0);
+	svg
+		.call(d3.drag()
+			.on("start", self.dragCanvasStarted.bind(self))
+          	.on("drag", self.dragCanvasDragged.bind(self))
+          	.on("end", self.dragCanvasEnded.bind(self))
+        );
 
 
 	self.svg.append("svg:defs").append("svg:marker")
@@ -106,11 +115,19 @@ var Graph = function(svg, nodes, edges, topics) {
   }
 }
 
-Graph.prototype.dragstarted = function(d) {
+Graph.prototype.dragCanvasStarted = function(d) {
   var self = this;
-  if (!d3.event.active) self.simulation.alphaTarget(0.1).restart();
-  d.fx = d.x;
-  d.fy = d.y;
+}
+Graph.prototype.dragCanvasDragged = function(d) {
+  var self = this;
+  var x = Number(self.svg.attr("x"));
+  var y = Number(self.svg.attr("y"));
+  self.svg.attr("x", (x + d3.event.dx));
+  self.svg.attr("y", (y + d3.event.dy));
+  self.svg.attr("transform", "translate(" + x + "," + y+ ")");
+}
+Graph.prototype.dragCanvasEnded = function(d) {
+  var self = this;
 }
 
 Graph.prototype.dragstarted = function(d) {
@@ -124,6 +141,7 @@ Graph.prototype.dragged = function(d) {
   var self = this;
   d.fx = d3.event.x;
   d.fy = d3.event.y;
+
 }
 
 Graph.prototype.dragended = function(d) {
@@ -136,23 +154,26 @@ Graph.prototype.dragended = function(d) {
 
 Graph.prototype.updateBoxes = function() {
 	var self = this;
-	self.boxes = [].concat(self.nodes, self.topics);
-	
-	console.log(self.boxes);
+	self.boxes = [].concat(self.displayNodes, self.displayTopics);
 	return self.simulation.nodes(self.boxes)
 }
 
 Graph.prototype.setNodes = function(nodes) {
 	var self = this;
-	self.nodes = nodes
-	.filter(	function(topic) {
-		return (topic.label !== "/rosout" || topic.label !== "/clock");
+	self.nodes = nodes;
+	self.displayNodes = self.nodes
+	.filter(	function(node) {
+		if (self.nodeFilter.indexOf(node.label)>= 0) {
+			return false;
+		}
+		return true;
 	});
 
 	var vgNodes = self.svgnodes
 					.selectAll("g")
-					.data(self.nodes);
-
+					.data(self.displayNodes);
+	console.log(vgNodes);
+	console.log(vgNodes.enter());
 	vgNodesG = vgNodes.enter().append("g")
 	vgNodesG.call(d3.drag()
 			.on("start", self.dragstarted.bind(self))
@@ -170,27 +191,34 @@ Graph.prototype.setNodes = function(nodes) {
         .append("text")
 		.text(function(d) { return d.label; });
 
-    self.updateBoxes();
-    self.updateEdges();
 }
 
 Graph.prototype.setTopics = function(topics) {
 	var self = this;
 
-	self.topics = topics.filter(	function(topic) {
-		return (topic.label !== "/rosout" && topic.label !== "/clock");
-	});
+	self.topics = topics;
+	self.displayTopics = self.topics
+	.filter(	function(topic) {
+		if (self.topicFilter.indexOf(topic.label)>= 0) {
+			return false;
+		}
+		if (self.topicNotConnected && (topic.inputs.length === 0 || topic.outputs.length === 0)) {
+			return false;
+		}
 
+		return true;
+	});
 	var vgTopics = self.svgtopics
 					.selectAll("g")
-					.data(self.topics)
+					.data(self.displayTopics)
 	
 	var vgTopicsG = vgTopics.enter().append("g");
 	vgTopicsG.call(d3.drag()
 			.on("start", self.dragstarted.bind(self))
           	.on("drag", self.dragged.bind(self))
           	.on("end", self.dragended.bind(self))
-        );	
+        );
+
     vgTopicsG
     	.append("rect")
 		.attr("width", 50)
@@ -202,23 +230,79 @@ Graph.prototype.setTopics = function(topics) {
 	vgTopicsG.append("text")
       .text(function(d) { return d.label; });
 
-    self.updateBoxes();
-    self.updateEdges();
+}
+
+Graph.prototype.setGraph = function(graph) {
+	var self = this;
+	var nodes = graph.nodes;
+	var topics = graph.topics;
+	var edges = graph.edges;
+
+	var nodesDict = {};
+	var topicsDict = {};
+	nodes.forEach(function(item) {
+		nodesDict[item.label] = item;
+		item["outputs"] = [];
+		item["inputs"] = [];
+	})
+	topics.forEach(function(item) {
+		topicsDict[item.label] = item;
+		item["outputs"] = [];
+		item["inputs"] = [];
+	})
+	edges.forEach(function(edge) {
+		s = edge.source
+		t = edge.target
+		if (nodesDict[s]) {
+			nodesDict[s].outputs.push(edge);
+		}
+		if (topicsDict[s]) {
+			topicsDict[s].outputs.push(edge);
+		}
+		if (nodesDict[t]) {
+			nodesDict[t].inputs.push(edge);
+		}
+		if (topicsDict[t]) {
+			topicsDict[t].inputs.push(edge);
+		}
+	})
+	self.setNodes(nodes);
+	self.setTopics(topics);
+	self.updateBoxes();
+	self.setEdges(edges);
+
+
+}
+
+Graph.prototype.setNodeFilter = function(nodeFilter) {
+	var self = this;
+	self.nodeFilter = nodeFilter;
+	self.setNodes(self.nodes);
+	self.updateBoxes();
+	self.setEdges(self.edges);
+}
+
+Graph.prototype.setTopicFilter = function(topicFilter) {
+	var self = this;
+	self.topicFilter = topicFilter;
+	self.setTopics(self.topics);
+	self.updateBoxes();
+	self.setEdges(self.edges);
+	self.updateEdges();
 }
 
 Graph.prototype.updateEdges = function() {
 	var self = this;
-	self.fedges = self.edges;
-	self.fedges = self.fedges.filter(
+	self.displayEdges = self.edges.filter(
 		function(item) {
-			var s = item.source;			
+			var s = item.sourceL;
 			source = self.boxes.find(
-				function(elem) {
-					//console.log(elem.label);
+				function(elem) {								
 					return elem.label === s;
 				}
 			);
-			var t = item.target;
+
+			var t = item.targetL;
 			target = self.boxes.find(
 				function(elem) {					
 					return elem.label === t;
@@ -230,21 +314,38 @@ Graph.prototype.updateEdges = function() {
 			return false;
 		}
 	);
-
-	self.svglink
+	self.displayEdges = self.displayEdges.map(function(item) {
+		item.source = item.sourceL;
+		item.target = item.targetL;
+		return item
+	})
+	console.log(self.boxes);
+	console.log(self.displayEdges)
+	
+	var links = self.svglink
     	.selectAll("line")
-    	.data(self.fedges)
-    	.enter().append("line")
+    	.data(self.displayEdges);
+    /*
+    links
+    	.exit().remove();
+	*/
+    links
+    	.enter()
+    	.append("line")
         .attr("stroke-width", 2);
          		
     self.simulation.force("link")
-      .links(self.fedges);
+      .links(self.displayEdges);
 
 }
 
 Graph.prototype.setEdges = function(edges) {
 	var self = this;
-	self.edges = edges;
+	self.edges = edges.map(function (item) {
+		item["sourceL"] = item.source;
+		item["targetL"] = item.target;
+		return item;
+	});
 	self.updateEdges();
 }
 
@@ -261,7 +362,7 @@ document.onload = (function() {
 
 
     var graph = new Graph(svg);
-
+    /*
 	$.getJSON('./api/getnodes', function(data) {         
         graph.setNodes(data);
     });
@@ -273,6 +374,9 @@ document.onload = (function() {
 	$.getJSON('./api/getntedges', function(data) {         
         graph.setEdges(data);
     });    
-    
-
+	*/
+	$.getJSON('./api/getgraph', function(data) {         
+        graph.setGraph(data);
+    });      
+	window.graph = graph;
 })(d3);
