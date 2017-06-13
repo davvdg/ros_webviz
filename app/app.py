@@ -44,20 +44,20 @@ def hello_world():
 
 @app.route('/api/getnodes')
 def getNodes():
-	nodeTitles = map(lambda node : {"label":node.strip()}, g.nn_nodes)
+	nodeTitles = map(lambda node : {"label":node}, g.nn_nodes)
 	nodeUri = g.node_uri_map
 	print nodeUri
 	return json.dumps(nodeTitles)
 
 @app.route('/api/gettopics')
 def getTopics():
-	nodeTitles = map(lambda node : {"label":node.strip()}, g.nt_nodes)
+	nodeTitles = map(lambda node : {"label":node}, g.nt_nodes)
 	
 	return json.dumps(nodeTitles)
 
 def edgeToDict(edge):
-	return {"source": edge.start.strip(), 
-			"target": edge.end.strip(), 
+	return {"source": edge.start, 
+			"target": edge.end, 
 			"label":edge.label, 
 			"key":edge.key,
 			"rkey":edge.rkey}
@@ -82,8 +82,8 @@ def getGraph():
 	for i in g.nt_edges:
 		print i
 	edges = map(edgeToDict, g.nt_all_edges)
-	nodes = map(lambda node : {"label":node.strip()}, g.nn_nodes)
-	topics = map(lambda node : {"label":node.strip()}, g.nt_nodes)
+	nodes = map(lambda node : {"label":node}, g.nn_nodes)
+	topics = map(lambda node : {"label":node}, g.nt_nodes)
 	out = {
 		"edges": edges,
 		"nodes": nodes,

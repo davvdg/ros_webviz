@@ -13,11 +13,13 @@ var Graph = function(svg, nodes, edges, topics) {
 	var color = d3.scaleOrdinal(d3.schemeCategory20);
 
 
-
+	var strength = -1000;
 	self.simulation = d3.forceSimulation()
     .force("link", d3.forceLink().id(function(d) { return d.label; }))
-    .force("charge", d3.forceManyBody().strength(-
-    	1000).distanceMax(5000).distanceMin(0))
+    .force("charge", d3.forceManyBody()
+    	.strength(strength)
+    	.distanceMax(500).distanceMin(0))
+    .force("collision", d3.forceCollide(50));
     //.force("center", d3.forceCenter(width / 2, height / 2));
 
 	self.svgnodes = self.svg.append("g")
@@ -29,8 +31,8 @@ var Graph = function(svg, nodes, edges, topics) {
 	self.svglink = self.svg.append("g")
     	.attr("class", "links")	
 
-    self.nodeFilter = ["/rosout"];
-    self.topicFilter = ["/rosout", "/clock"];
+    self.nodeFilter = [];
+    self.topicFilter = ["/clock"];
 
     self.topicNotConnected = true;
 
@@ -171,9 +173,10 @@ Graph.prototype.setNodes = function(nodes) {
 
 	var vgNodes = self.svgnodes
 					.selectAll("g")
-					.data(self.displayNodes);
-	console.log(vgNodes);
-	console.log(vgNodes.enter());
+					.data(self.displayNodes, function(d) { return d.label; });
+
+	vgNodes.exit().remove();
+
 	vgNodesG = vgNodes.enter().append("g")
 	vgNodesG.call(d3.drag()
 			.on("start", self.dragstarted.bind(self))
@@ -210,8 +213,10 @@ Graph.prototype.setTopics = function(topics) {
 	});
 	var vgTopics = self.svgtopics
 					.selectAll("g")
-					.data(self.displayTopics)
-	
+					.data(self.displayTopics, function(d) { return d.label; })
+
+	vgTopics.exit().remove();	
+
 	var vgTopicsG = vgTopics.enter().append("g");
 	vgTopicsG.call(d3.drag()
 			.on("start", self.dragstarted.bind(self))
@@ -226,7 +231,6 @@ Graph.prototype.setTopics = function(topics) {
 		.attr("x", -25)
 		.attr("y", -25)
 
-
 	vgTopicsG.append("text")
       .text(function(d) { return d.label; });
 
@@ -234,8 +238,8 @@ Graph.prototype.setTopics = function(topics) {
 
 Graph.prototype.setGraph = function(graph) {
 	var self = this;
-	var nodes = graph.nodes;
-	var topics = graph.topics;
+	var nodes = graph.nodes.map(function(item) {item.nodeType ="node"; return item;});
+	var topics = graph.topics.map(function(item) {item.nodeType ="topic"; return item;});
 	var edges = graph.edges;
 
 	var nodesDict = {};
@@ -279,7 +283,7 @@ Graph.prototype.setNodeFilter = function(nodeFilter) {
 	self.nodeFilter = nodeFilter;
 	self.setNodes(self.nodes);
 	self.updateBoxes();
-	self.setEdges(self.edges);
+	self.updateEdges();
 }
 
 Graph.prototype.setTopicFilter = function(topicFilter) {
@@ -287,7 +291,6 @@ Graph.prototype.setTopicFilter = function(topicFilter) {
 	self.topicFilter = topicFilter;
 	self.setTopics(self.topics);
 	self.updateBoxes();
-	self.setEdges(self.edges);
 	self.updateEdges();
 }
 
@@ -319,16 +322,14 @@ Graph.prototype.updateEdges = function() {
 		item.target = item.targetL;
 		return item
 	})
-	console.log(self.boxes);
-	console.log(self.displayEdges)
 	
 	var links = self.svglink
     	.selectAll("line")
-    	.data(self.displayEdges);
-    /*
+    	.data(self.displayEdges, function(d) {return d.sourceL + "-" + d.targetL;});
+    
     links
     	.exit().remove();
-	*/
+	
     links
     	.enter()
     	.append("line")
@@ -336,6 +337,7 @@ Graph.prototype.updateEdges = function() {
          		
     self.simulation.force("link")
       .links(self.displayEdges);
+    self.simulation.alphaTarget(0.01).restart();
 
 }
 
@@ -355,9 +357,7 @@ document.onload = (function() {
 	console.log(d3)
     var svg = d3.select("div#chart")
         .append("svg")
-        .attr("width", "1024")
-        .attr("height", "1024");
-    console.log(svg);
+
 
 
 
@@ -379,4 +379,17 @@ document.onload = (function() {
         graph.setGraph(data);
     });      
 	window.graph = graph;
+
+	$("#nodefilter").on('input', function (event) {
+		var filter = event.currentTarget.value;
+		filter = filter.split(";");
+		graph.setNodeFilter(filter);
+    });
+
+    $("#topicfilter").on('input', function (event) {
+		var filter = event.currentTarget.value;
+		filter = filter.split(";");
+		graph.setTopicFilter(filter);
+    });
+
 })(d3);

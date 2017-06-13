@@ -25,3 +25,12 @@
   fill: red;
   fill-opacity: .1;
 }
+
+html, body, .container-fluid {
+    height:100%;
+}
+
+div#chart svg {
+  width: 100%;
+  height: 1024px;
+}
