@@ -185,7 +185,25 @@ Graph.prototype.setNodes = function(nodes) {
 					.selectAll("g")
 					.data(self.displayNodes, function(d) { return d.label; });
 
-	vgNodes.exit().remove();
+	vgNodes.exit()
+		.selectAll("circle")
+		.transition()
+      	.duration(250)
+      	.attr("r", 0)
+		.remove();
+
+	vgNodes.exit()
+		.selectAll("text")
+		.transition()
+      	.duration(0)
+      	.attr("fill-opacity", 0.0)
+		.remove();
+
+	vgNodes.exit()
+		.transition()
+		.duration(250)
+		.remove();
+
 
 	vgNodesG = vgNodes.enter().append("g")
 	vgNodesG.call(d3.drag()
@@ -221,7 +239,7 @@ Graph.prototype.setTopics = function(topics) {
 		if (self.topicFilter.indexOf(topic.label)>= 0) {
 			return false;
 		}
-		if (self.topicNotConnected && (topic.inputs.length === 0 || topic.outputs.length === 0)) {
+		if (self.topicNotConnected && (topic.outputs.length === 0)) {
 			return false;
 		}
 
@@ -230,8 +248,26 @@ Graph.prototype.setTopics = function(topics) {
 	var vgTopics = self.svgtopics
 					.selectAll("g")
 					.data(self.displayTopics, function(d) { return d.label; })
+	vgTopics.exit()
+		.selectAll("rect")
+		.transition()
+      	.duration(250)
+      	.attr("width", 0)
+      	.attr("height", 0)
+      	.attr("x", 0)
+      	.attr("y", 0)
+		.remove();
 
-	vgTopics.exit().remove();	
+	vgTopics.exit()
+		.selectAll("text")
+		.transition()
+      	.duration(0)
+		.remove();
+
+	vgTopics.exit()
+		.transition()
+      	.duration(250)
+      	.remove();	
 
 	var vgTopicsG = vgTopics.enter().append("g");
 	vgTopicsG.call(d3.drag()
@@ -305,6 +341,17 @@ Graph.prototype.setNodeFilter = function(nodeFilter) {
 Graph.prototype.setTopicFilter = function(topicFilter) {
 	var self = this;
 	self.topicFilter = topicFilter;
+	self.refreshDisplayedTopics();	
+}
+
+Graph.prototype.setHideDeadSinkTopics = function(value) {
+	var self = this;
+	self.topicNotConnected = value;
+	self.refreshDisplayedTopics();	
+}
+
+Graph.prototype.refreshDisplayedTopics = function() {
+	var self = this;
 	self.setTopics(self.topics);
 	self.updateBoxes();
 	self.updateEdges();
@@ -429,14 +476,24 @@ document.onload = (function() {
 
 	$("#nodefilter").on('input', function (event) {
 		var filter = event.currentTarget.value;
-		filter = filter.split(";");
+		filter = filter
+					.split(" ")
+					.map(function(item) {return item.replace(/^\s+|\s+$/g, '')});
 		graph.setNodeFilter(filter);
     });
 
     $("#topicfilter").on('input', function (event) {
 		var filter = event.currentTarget.value;
-		filter = filter.split(";");
+		filter = filter
+					.split(" ")
+					.map(function(item) {return item.replace(/^\s+|\s+$/g, '')})
+					.map(function(item) {return " " + item});
 		graph.setTopicFilter(filter);
+    });
+
+    $("#hidedeadsinktopics").change('input', function (event) {
+		var value = event.target.checked;
+		graph.setHideDeadSinkTopics(value);
     });
 
 })(d3);
