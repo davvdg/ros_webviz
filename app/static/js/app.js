@@ -15,7 +15,9 @@ var Graph = function(svg, nodes, edges, topics) {
 
 	var strength = -1000;
 	self.simulation = d3.forceSimulation()
-    .force("link", d3.forceLink().id(function(d) { return d.label; }))
+    .force("link", 
+    	d3.forceLink()
+    		.id(function(d) { return d.label; })) 		
     .force("charge", d3.forceManyBody()
     	.strength(strength)
     	.distanceMax(500).distanceMin(0))
@@ -162,6 +164,14 @@ Graph.prototype.updateBoxes = function() {
 
 Graph.prototype.setNodes = function(nodes) {
 	var self = this;
+	nodes = nodes.map(function(node) {
+		var oldNode = self.nodes.find(function(item) {return item.label === node.label});
+		if (oldNode) {
+			return oldNode; 
+		}
+		return node;
+	});
+
 	self.nodes = nodes;
 	self.displayNodes = self.nodes
 	.filter(	function(node) {
@@ -198,7 +208,13 @@ Graph.prototype.setNodes = function(nodes) {
 
 Graph.prototype.setTopics = function(topics) {
 	var self = this;
-
+	topics = topics.map(function(node) {
+		var oldNode = self.topics.find(function(item) {return item.label === node.label});
+		if (oldNode) {
+			return oldNode; 
+		}
+		return node;
+	});
 	self.topics = topics;
 	self.displayTopics = self.topics
 	.filter(	function(topic) {
@@ -337,7 +353,7 @@ Graph.prototype.updateEdges = function() {
          		
     self.simulation.force("link")
       .links(self.displayEdges);
-    self.simulation.alphaTarget(0.01).restart();
+    self.simulation.alphaTarget(0.00001).restart();
 
 }
 
@@ -352,6 +368,9 @@ Graph.prototype.setEdges = function(edges) {
 }
 
 document.onload = (function() {
+
+
+
 	"use strict";
 	console.log("haha");
 	console.log(d3)
@@ -362,6 +381,29 @@ document.onload = (function() {
 
 
     var graph = new Graph(svg);
+
+    var updateStatus = function(statusjson) {
+    	console.log(statusjson);
+    	var textStatus = "connected";
+        if (statusjson.app_connected === false) textStatus = "disconnected";
+        $("#masterstatus").val(textStatus);
+        $("#masteruri").val(statusjson.ros_master_uri);
+    }
+
+	var socket = io.connect('http://' + document.domain + ':' + location.port);
+    socket.on('connect', function() {
+    	console.log("socketio connected");        
+        socket.on("graph_updated", function(graphJson) {
+        	console.log("graph_updated")
+        	graph.setGraph(graphJson);
+        });
+        socket.on("connectivity_changed", function(status) {
+        	status = JSON.parse(status);
+			updateStatus(status);
+        	
+        });
+    });
+
     /*
 	$.getJSON('./api/getnodes', function(data) {         
         graph.setNodes(data);
@@ -378,6 +420,11 @@ document.onload = (function() {
 	$.getJSON('./api/getgraph', function(data) {         
         graph.setGraph(data);
     });      
+	$.getJSON('./api/getstatus', function(data) {         
+        updateStatus(data);
+    });      
+
+    updateStatus(status);
 	window.graph = graph;
 
 	$("#nodefilter").on('input', function (event) {
