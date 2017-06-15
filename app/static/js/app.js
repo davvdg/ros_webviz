@@ -1,28 +1,35 @@
-var Graph = function(svg, nodes, edges, topics) {
+
+
+var Graph = function(svg, nodes, nodeLinks, topics) {
 	var self = this;
-	self.nodes = nodes || [];
-	self.topics = topics || [];
-	self.edges = edges || [];
+	var tnodes = nodes || [];
+	var ttopics = topics || [];
+	var tnodeLinks = nodeLinks || [];
+
 	self.svg = svg.append("g");
 
 	self.boxes = [];
-	self.fedges = [];
-	var width = 600;
-	var height = 600;
 
-	var color = d3.scaleOrdinal(d3.schemeCategory20);
-
+	/* 
+		this will hold the representation of links between nodes
+		it is set by computeEdgeDisplayMode.
+		it can be either 
+			- a node to topic or topic to node representation
+			- a node to node representation (avoiding topic node in between)
+	*/
+	self.edgesRepr = [];
+	// this list of edges to display after filtering (either source or display is not visible)
+	self.displayEdges = [];
 
 	var strength = -1000;
 	self.simulation = d3.forceSimulation()
-    .force("link", 
-    	d3.forceLink()
-    		.id(function(d) { return d.label; })) 		
-    .force("charge", d3.forceManyBody()
-    	.strength(strength)
-    	.distanceMax(500).distanceMin(0))
-    .force("collision", d3.forceCollide(50));
-    //.force("center", d3.forceCenter(width / 2, height / 2));
+    	.force("link", 
+    		d3.forceLink().id(function(d) { return d.label; })) 		
+    	.force("charge", d3.forceManyBody()
+    		//.strength(strength)
+    		.distanceMax(5000).distanceMin(500))
+    	.force("collision", d3.forceCollide(50))
+    	.force("center", d3.forceCenter(width / 2, height / 2));
 
 	self.svgnodes = self.svg.append("g")
 		.attr("class", "nodes")
@@ -34,14 +41,20 @@ var Graph = function(svg, nodes, edges, topics) {
     	.attr("class", "links")	
 
     self.nodeFilter = [];
-    self.topicFilter = ["/clock"];
+    self.topicFilter = [];
 
     self.topicNotConnected = true;
 
-    self.setNodes([]);
-    self.setTopics([]);
-	self.setEdges([]);
+    self.showTopics = true;
+
+	self.setNodes(tnodes); // nodes are now filtered and displayed
+	self.setTopics(ttopics); 
+	self.setNodeLinks(tnodeLinks);
 	
+	self.updateNodeAndTopicDisplay();
+
+	self.simulation.on("tick", ticked);
+
 	self.svg
 		.attr("x", 0)
 		.attr("y", 0);
@@ -52,7 +65,6 @@ var Graph = function(svg, nodes, edges, topics) {
           	.on("end", self.dragCanvasEnded.bind(self))
         );
 
-
 	self.svg.append("svg:defs").append("svg:marker")
     .attr("id", "triangle")
     .attr("refX", 10)
@@ -62,11 +74,7 @@ var Graph = function(svg, nodes, edges, topics) {
     .attr("orient", "auto")
     .append("path")
     .attr("d", "M0,0 L0,10 L10,5 L0,0")
-
-	self.updateBoxes()
-      .on("tick", ticked);
-
-
+    
   function ticked() {
 
   	var svgnodes = self.svgnodes
@@ -119,6 +127,31 @@ var Graph = function(svg, nodes, edges, topics) {
   }
 }
 
+Graph.prototype.computeEdgeDisplayMode = function() {
+	var self = this;
+	if (!self.showTopics) {
+		// take all topics
+		// create a list of edges mapping:
+		// all inputs to all outputs
+		var directEdges = [];
+		self.displayTopics.forEach(function(topic) {
+			alli2o = [];
+			var i2o = topic.inputs.forEach(function(input) {
+				// input is an edge.
+				var nodeAtInput = input.source;				
+				topic.outputs.forEach(function(output) {
+					var nodeAtOutput = output.target;
+					alli2o.push( {"source": nodeAtInput, "sourceL": nodeAtInput.label, "targetL": nodeAtOutput.label,"label": topic.label, "target" : nodeAtOutput});
+				});
+			});
+			directEdges = directEdges.concat(alli2o);
+		});
+		self.edgesRepr = directEdges;
+	} else {
+		self.edgesRepr = self.nodeLinks;
+	}
+}
+
 Graph.prototype.dragCanvasStarted = function(d) {
   var self = this;
 }
@@ -158,21 +191,35 @@ Graph.prototype.dragended = function(d) {
 
 Graph.prototype.updateBoxes = function() {
 	var self = this;
-	self.boxes = [].concat(self.displayNodes, self.displayTopics);
-	return self.simulation.nodes(self.boxes)
+	self.boxes = self.displayNodes
+	if (self.showTopics) self.boxes = self.boxes.concat(self.displayTopics);
 }
 
 Graph.prototype.setNodes = function(nodes) {
 	var self = this;
-	nodes = nodes.map(function(node) {
+	self.nodesDict = {}
+	var tempNodes = nodes.map(function(node) {
+		node.nodeType ="node"; 
+
+
+		
+
 		var oldNode = self.nodes.find(function(item) {return item.label === node.label});
 		if (oldNode) {
-			return oldNode; 
+			node = oldNode; 
 		}
+		self.nodesDict[node.label] = node;
+		node["outputs"] = [];
+		node["inputs"] = [];
+
 		return node;
 	});
 
-	self.nodes = nodes;
+	self.nodes = tempNodes;
+}
+Graph.prototype.filterDisplayNodes = function(nodes) {	
+	var self = this;
+
 	self.displayNodes = self.nodes
 	.filter(	function(node) {
 		if (self.nodeFilter.indexOf(node.label)>= 0) {
@@ -180,7 +227,9 @@ Graph.prototype.setNodes = function(nodes) {
 		}
 		return true;
 	});
-
+}
+Graph.prototype.renderNodes = function(nodes) {	
+	var self = this;
 	var vgNodes = self.svgnodes
 					.selectAll("g")
 					.data(self.displayNodes, function(d) { return d.label; });
@@ -216,24 +265,92 @@ Graph.prototype.setNodes = function(nodes) {
 	vgNodesG
 		.append("circle")
 		.attr("r", 25)
+		.attr("stroke-width", function(d) {
+			if (d.inputs.length === 0) {
+				return 4;
+			} 
+			return 1;
+		})		
 
 
     vgNodesG
         .append("text")
-		.text(function(d) { return d.label; });
+		.text(function(d) { return d.label; })
+		.style("text-anchor", "middle");
 
 }
 
+/*
+	Merge a new list of topics with the old ones.
+	Try to keep the old objects because they are already have simulation values
+	avoiding jumps in the display.
+*/
 Graph.prototype.setTopics = function(topics) {
 	var self = this;
-	topics = topics.map(function(node) {
+	self.topicsDict = {};
+	var tempTopics = topics.map(function(node) {
+		node.nodeType ="topic"; 
+
+
+		
+		var out = node;
 		var oldNode = self.topics.find(function(item) {return item.label === node.label});
 		if (oldNode) {
-			return oldNode; 
+			out = oldNode; 
 		}
-		return node;
+
+		out.outputs = [];
+		out.inputs = [];
+		self.topicsDict[node.label] = out;
+		return out;
 	});
-	self.topics = topics;
+	self.topics = tempTopics;
+}
+
+/*
+	We update the connection data between nodes
+	This has nothing to do with the display;
+	This should always be called AFTER setting nodes and topics
+*/
+Graph.prototype.setNodeLinks = function(nodeLinks) {
+	var self = this;
+	// prepare edges
+	self.nodeLinks = nodeLinks.map(function (item) {
+		item["sourceL"] = item.source;
+		item["targetL"] = item.target;
+		return item;
+	});
+	// reset the connections for all nodes
+	self.nodes.concat(self.topics).forEach(function(node, i) {
+		node.id = i;
+		node.inputs = [];
+		node.outputs = [];
+	})
+	self.nodeLinks.forEach(function(link) {
+		s = link.source
+		t = link.target		
+		if (self.nodesDict[s]) {
+			link.source = self.nodesDict[s];
+			self.nodesDict[s].outputs.push(link);
+		}
+		if (self.topicsDict[s]) {
+			link.source = self.topicsDict[s];
+			self.topicsDict[s].outputs.push(link);
+		}
+		if (self.nodesDict[t]) {
+			link.target = self.nodesDict[t];
+			self.nodesDict[t].inputs.push(link);
+		}
+		if (self.topicsDict[t]) {			
+			link.target = self.topicsDict[t];
+			self.topicsDict[t].inputs.push(link);
+		}
+	})
+}
+
+/* filter which topics should be kept for rendering */
+Graph.prototype.filterDisplayTopics = function() {
+	var self = this;
 	self.displayTopics = self.topics
 	.filter(	function(topic) {
 		if (self.topicFilter.indexOf(topic.label)>= 0) {
@@ -245,9 +362,20 @@ Graph.prototype.setTopics = function(topics) {
 
 		return true;
 	});
+}
+/*
+	Render the topics to display.
+*/
+Graph.prototype.renderTopics = function() {
+	var self = this;
+	var data = []
+	if (self.showTopics) {
+		data = self.displayTopics;
+	}
 	var vgTopics = self.svgtopics
 					.selectAll("g")
-					.data(self.displayTopics, function(d) { return d.label; })
+					.data(data, function(d) { return d.label; })
+	console.log(vgTopics);
 	vgTopics.exit()
 		.selectAll("rect")
 		.transition()
@@ -269,97 +397,107 @@ Graph.prototype.setTopics = function(topics) {
       	.duration(250)
       	.remove();	
 
-	var vgTopicsG = vgTopics.enter().append("g");
+	var vgTopicsG = vgTopics
+						.enter()
+						.append("g");
+
 	vgTopicsG.call(d3.drag()
 			.on("start", self.dragstarted.bind(self))
           	.on("drag", self.dragged.bind(self))
           	.on("end", self.dragended.bind(self))
         );
 
+	var textNodes = vgTopicsG.append("text")
+      .text(function(d) { return d.label; })
+      .style("text-anchor", "middle");
+
     vgTopicsG
     	.append("rect")
-		.attr("width", 50)
+		//.attr("width", 50)
 		.attr("height", 50)
-		.attr("x", -25)
+		.attr('x', function (d, i) {
+    		return (textNodes.filter(function (d, j) { 
+    			return i === j;
+    		}).node().getComputedTextLength()+10) / -2;        		
+		})
 		.attr("y", -25)
+		.attr("stroke-width", function(d) {
+			if (d.inputs.length === 0) {
+				return 4;
+			} 
+			return 1;
+		})
+		.attr('width', function (d, i) {
+    		return textNodes.filter(function (d, j) { 
+    			return i === j;
+    		}).node().getComputedTextLength()+10;        		
+		});
 
-	vgTopicsG.append("text")
-      .text(function(d) { return d.label; });
+
 
 }
 
 Graph.prototype.setGraph = function(graph) {
+	var self = this;	
+	// Data Graph management
+	self.setNodes(graph.nodes); // nodes are now filtered and displayed
+	self.setTopics(graph.topics); 
+	self.setNodeLinks(graph.edges);
+	
+	self.updateNodeAndTopicDisplay();
+
+
+}
+
+Graph.prototype.updateNodeAndTopicDisplay = function(value) {
 	var self = this;
-	var nodes = graph.nodes.map(function(item) {item.nodeType ="node"; return item;});
-	var topics = graph.topics.map(function(item) {item.nodeType ="topic"; return item;});
-	var edges = graph.edges;
+	self.filterDisplayNodes();
+	self.renderNodes();
+	self.filterDisplayTopics(); // topics are now filtered
+	self.updateEdgesDisplay();
+}
 
-	var nodesDict = {};
-	var topicsDict = {};
-	nodes.forEach(function(item) {
-		nodesDict[item.label] = item;
-		item["outputs"] = [];
-		item["inputs"] = [];
-	})
-	topics.forEach(function(item) {
-		topicsDict[item.label] = item;
-		item["outputs"] = [];
-		item["inputs"] = [];
-	})
-	edges.forEach(function(edge) {
-		s = edge.source
-		t = edge.target
-		if (nodesDict[s]) {
-			nodesDict[s].outputs.push(edge);
-		}
-		if (topicsDict[s]) {
-			topicsDict[s].outputs.push(edge);
-		}
-		if (nodesDict[t]) {
-			nodesDict[t].inputs.push(edge);
-		}
-		if (topicsDict[t]) {
-			topicsDict[t].inputs.push(edge);
-		}
-	})
-	self.setNodes(nodes);
-	self.setTopics(topics);
-	self.updateBoxes();
-	self.setEdges(edges);
+Graph.prototype.updateEdgesDisplay = function(value) {
+	var self = this;
+	self.renderTopics(); // and displayed
 
+	// Edge display management
+	self.updateBoxes(); // agregate nodes and topics
+	self.computeEdgeDisplayMode();
+	self.filterEdges();
 
+	self.renderEdges();
+	// Simulation
+	self.updateSimulation();
+}
+
+Graph.prototype.showTopicsAsEdge = function(value) {
+	var self = this;
+	self.showTopics = !value;
+	self.updateEdgesDisplay(); // and displayed
 }
 
 Graph.prototype.setNodeFilter = function(nodeFilter) {
 	var self = this;
 	self.nodeFilter = nodeFilter;
-	self.setNodes(self.nodes);
-	self.updateBoxes();
-	self.updateEdges();
+	self.updateNodeAndTopicDisplay();	
 }
 
 Graph.prototype.setTopicFilter = function(topicFilter) {
 	var self = this;
 	self.topicFilter = topicFilter;
-	self.refreshDisplayedTopics();	
+	self.updateNodeAndTopicDisplay();	
 }
 
 Graph.prototype.setHideDeadSinkTopics = function(value) {
 	var self = this;
 	self.topicNotConnected = value;
-	self.refreshDisplayedTopics();	
+	self.updateNodeAndTopicDisplay();	
 }
 
-Graph.prototype.refreshDisplayedTopics = function() {
+Graph.prototype.filterEdges = function() {
 	var self = this;
-	self.setTopics(self.topics);
-	self.updateBoxes();
-	self.updateEdges();
-}
-
-Graph.prototype.updateEdges = function() {
-	var self = this;
-	self.displayEdges = self.edges.filter(
+	self.displayEdges = self.edgesRepr.filter(
 		function(item) {
 			var s = item.sourceL;
 			source = self.boxes.find(
@@ -380,12 +518,10 @@ Graph.prototype.updateEdges = function() {
 			return false;
 		}
 	);
-	self.displayEdges = self.displayEdges.map(function(item) {
-		item.source = item.sourceL;
-		item.target = item.targetL;
-		return item
-	})
-	
+}
+
+Graph.prototype.renderEdges = function() {
+	var self = this;
 	var links = self.svglink
     	.selectAll("line")
     	.data(self.displayEdges, function(d) {return d.sourceL + "-" + d.targetL;});
@@ -397,21 +533,18 @@ Graph.prototype.updateEdges = function() {
     	.enter()
     	.append("line")
         .attr("stroke-width", 2);
-         		
-    self.simulation.force("link")
-      .links(self.displayEdges);
-    self.simulation.alphaTarget(0.00001).restart();
-
 }
 
-Graph.prototype.setEdges = function(edges) {
+Graph.prototype.updateSimulation = function() {
 	var self = this;
-	self.edges = edges.map(function (item) {
-		item["sourceL"] = item.source;
-		item["targetL"] = item.target;
-		return item;
-	});
-	self.updateEdges();
+    self.simulation
+    	.force("link")
+      	.links(self.displayEdges);
+	
+	self.simulation.nodes(self.boxes)
+    
+    self.simulation.alphaTarget(0.001).restart();
+    return self.simulation;
 }
 
 document.onload = (function() {
@@ -494,6 +627,11 @@ document.onload = (function() {
     $("#hidedeadsinktopics").change('input', function (event) {
 		var value = event.target.checked;
 		graph.setHideDeadSinkTopics(value);
+    });
+
+    $("#showtopicsasedge").change('input', function (event) {
+		var value = event.target.checked;
+		graph.showTopicsAsEdge(value);
     });
 
 })(d3);

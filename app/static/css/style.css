@@ -20,8 +20,7 @@
 }
 
 .topics rect {
-  stroke: #000;
-  stroke-width: 1.5px;
+  stroke: #000;  
   fill: red;
   fill-opacity: .1;
 }
