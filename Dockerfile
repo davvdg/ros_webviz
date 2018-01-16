@@ -4,4 +4,4 @@ COPY app /web
 RUN cd /web && bash setup.bash
 EXPOSE 5500 
 ENV ROS_MASTER_URI=http://rosmaster:11311
-ENTRYPOINT /web/app/entrypoint.sh
+ENTRYPOINT /web/entrypoint.sh

@@ -1,3 +1,10 @@
+from OpenSSL import SSL
+context = SSL.Context(SSL.SSLv23_METHOD)
+context = ('certs/server.crt', 'certs/server.key')
+
+
+
+
 from flask import Flask, render_template
 from flask_socketio import SocketIO
 from flask_apscheduler import APScheduler
@@ -5,6 +12,8 @@ import rosgraph.impl.graph
 import rosgraph.masterapi
 import json
 import os, sys
+
+
 
 rosmaster = None
 g = None
@@ -109,6 +118,14 @@ scheduler.start()
 def hello_world():
     return app.send_static_file("index.html")
 
+@app.route('/view3d')
+def view3d():
+    return app.send_static_file("view3d.html")
+
+@app.route('/videoImuRos')
+def videoImuRos():
+    return app.send_static_file("videoImuRos.html")
+
 @app.route('/api/getnodes')
 def getNodes():
 	nodeTitles = map(lambda node : {"label":node}, g.nn_nodes)
@@ -175,3 +192,6 @@ def getGraph():
 		out = createGraphJson()
 
 	return json.dumps(out)
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=5500, debug=True, ssl_context=context)

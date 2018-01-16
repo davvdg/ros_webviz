@@ -1,1 +1,0 @@
-docker run -ti --rm  --env ROS_MASTER_URI="http://172.17.0.4:11311" -p 5500:5500 davvdg/ros_webviz

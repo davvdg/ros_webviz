@@ -28,8 +28,8 @@ var Graph = function(svg, nodes, nodeLinks, topics) {
     	.force("charge", d3.forceManyBody()
     		//.strength(strength)
     		.distanceMax(5000).distanceMin(500))
-    	.force("collision", d3.forceCollide(50))
-    	.force("center", d3.forceCenter(width / 2, height / 2));
+    	.force("collision", d3.forceCollide(50));
+    	//.force("center", d3.forceCenter(width / 2, height / 2));
 
 	self.svgnodes = self.svg.append("g")
 		.attr("class", "nodes")
